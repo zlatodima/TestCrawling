@@ -1,0 +1,19 @@
+{
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "got-scraping": "^3.2.15",
+    "playwright": "1.41",
+    "puppeteer": "^23.5.0"
+  },
+  "name": "testcrawling",
+  "description": "Install dependencies with npm Follow the instructions on every .js file",
+  "version": "1.0.0",
+  "main": "api.js",
+  "scripts": {},
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.48.1",
+    "@types/node": "^22.8.0"
+  }
+}
