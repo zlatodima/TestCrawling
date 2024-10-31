@@ -23,8 +23,63 @@
  * --------------------------------------------------------------------------------------------------------------
  */
 
+import { gotScraping } from 'got-scraping';
+import { load } from 'cheerio';
+
 const urls = [
     'https://www.miinto.it/p-de-ver-s-abito-slip-3059591a-7c04-405c-8015-0936fc8ff9dd',
     'https://www.miinto.it/p-abito-a-spalline-d-jeny-fdac3d17-f571-4b55-8780-97dddf80ef35',
     'https://www.miinto.it/p-abito-bianco-con-stampa-grafica-e-scollo-a-v-profondo-2b03a3d9-fab1-492f-8efa-9151d3322ae7'
 ];
+
+const errorStatusCodes = new Set([404, 403]);
+
+async function getProductData(url){
+    const { body, statusCode, statusMessage } = await gotScraping({ url });
+
+    if (errorStatusCodes.has(statusCode)) throw new Error(statusMessage); 
+
+    const $ = load(body);
+
+    //find by unique attribute, because classNames have auto-generated id
+    //On each application compilation id will be changed
+    const fullPriceWithCurrency = $(`[data-testid="product-previous-price"]`).text();
+    const discountedPriceWithCurrency = $(`[data-testid="product-price"]`)?.text() || fullPriceWithCurrency;
+
+    const [ discountedPrice, discountedPriceCurrency ] = discountedPriceWithCurrency.split(' ');
+    const [ fullPrice, fullPriceCurrency ] = fullPriceWithCurrency?.split(' ');
+
+    const title = $(`title`)?.text() || $(`[property="og:title"]`)?.getAttribute("content");
+
+    return {
+        url,
+        fullPrice: fullPrice || discountedPrice,
+        discountedPrice,
+        currency: discountedPriceCurrency,
+        title
+    }
+}
+
+async function getProductDataRecordsSequetally() {
+    let productDataRecords = [];
+    for (let url of urls) {
+        let productDataRecord = await getProductData(url);
+        productDataRecords.push(productDataRecord);
+    }
+
+    return productDataRecords;
+}
+
+async function getProductDataRecordsInParallel() {
+    const promises = urls.map((url) => getProductData(url));
+
+    return await Promise.all(promises);
+}
+
+(async () => {
+    const dataRecordsSequetally = await getProductDataRecordsSequetally();
+    const dataRecordsInParallel = await getProductDataRecordsInParallel();
+
+    console.log("dataRecordsSequetally \n %o", dataRecordsSequetally);
+    console.log("dataRecordsInParallel \n %o", dataRecordsInParallel);
+})();
