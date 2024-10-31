@@ -33,6 +33,9 @@
  * --------------------------------------------------------------------------------------------------------------
  */
 
+import puppeteer from 'puppeteer';
+import { load } from 'cheerio';
+
 const urls = [
     'https://www.outdoorsrlshop.it/catalogo/1883-trekker-rip.html',
     'https://www.outdoorsrlshop.it/catalogo/2928-arco-man-t-shirt.html'
@@ -63,40 +66,89 @@ function getCurrencyCodeBySign(currencySign) {
     return currencyCodes.get(currencySign);
 }
 
-async function getProductData(page, url) {
-    const response = await page.goto(url, { waitUntil: 'networkidle0' });
-
-    if (errorStatusCodes.has(response.status())) throw new Error(response.statusText()); 
-    
-    const pageHTML = await page.evaluate(() => document.querySelector('*').outerHTML);
-    const $ = load(pageHTML);
+function getGeneralProductInfo(url, $) {
     const fullPriceWithCurrency = $('.upyPrezzoFinale').text();
     const [currencySign, fullPrice] = fullPriceWithCurrency.split(" ");
     const currencyCode = getCurrencyCodeBySign(currencySign);
     const title = $('main section h1').text();
-    
+
     return {
         url,
         fullPrice,
         discountedPrice: fullPrice,
         currency: currencyCode,
         title
+    };
+}
+
+async function getCherioAPIAccess(page) {
+    const pageHTML = await page.evaluate(() => document.querySelector('*').outerHTML);
+    return load(pageHTML);
+}
+
+function getProductOptions($) {
+    const productSizeOptions = $('.scegliVarianti option').toArray();
+
+    return productSizeOptions.map((productSizeOption) => {
+        let value = $(productSizeOption).text();
+        let optionValue = productSizeOption.attribs.value;
+
+        return {
+            value,
+            optionValue
+        }
+    });
+}
+
+async function getProductData(url, $) {
+    const generalProductInfo = getGeneralProductInfo(url, $);
+    const productOptions = getProductOptions($);
+
+    return {
+        generalProductInfo,
+        productOptions
     }
 }
 
-import puppeteer from 'puppeteer';
-import { load } from 'cheerio';
+async function selectSizeOption(page) {
+    await page.evaluate(() => {
+        const selectElement = document.querySelector('.scegliVarianti');
+        const optionsElems = selectElement.children;
+        const optionLength = optionsElems.length;
+
+        if (optionLength > 1) {
+            selectElement.selectedIndex = 1;
+        } else if (optionLength === 1) {
+            selectElement.selectedIndex = 0;
+        }
+
+        selectElement.dispatchEvent(new Event('change'));
+    });
+}
 
 (async () => {
-    const browser = await puppeteer.launch();
+    const browser = await puppeteer.launch({
+        headless: false
+    });
     const page = await browser.newPage();
 
-    let productDataRecords = [];
+    let generalProductInfoRecords = [];
+    let productOptionRecords = [];
     for (let url of urls) {
-        let productData = await getProductData(page, url);
-        productDataRecords.push(productData);
+        const response = await page.goto(url, { waitUntil: 'networkidle0' });
+
+        if (errorStatusCodes.has(response.status())) throw new Error(response.statusText()); 
+
+        const $ = await getCherioAPIAccess(page);
+
+        let { generalProductInfo, productOptions } = await getProductData(url, $);
+
+        selectSizeOption(page);
+        generalProductInfoRecords.push(generalProductInfo);
+        productOptionRecords.push(productOptions);
     }
 
-    console.log(productDataRecords)
-    await browser.close();
+    console.log(productOptionRecords)
+    // await browser.close();
 })();
+
